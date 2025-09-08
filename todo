@@ -1,0 +1,10 @@
+dbs on dou
+db address by environ
+
+
+read links para usecase
+usar rich
+usar typer ou click
+fazer logica de processamento de linksnetry, onde cada linksnetry é checado numero de links
+get_links mudar nome para ingest links
+fazer usecase insert links month
