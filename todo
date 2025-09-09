@@ -1,7 +1,9 @@
+corrigir mains...
+main de mcp deve pegar host e port de environ
+usar bibliotexa hollidays de python e comparar com get_weekdays
+adicionar logica para noretry de erro em getlinks de ponte de feriado quinta ou segunda
+
 dbs on dou
-db address by environ
-
-
 read links para usecase
 usar rich
 usar typer ou click
