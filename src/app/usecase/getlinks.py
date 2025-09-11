@@ -1,22 +1,17 @@
 from dataclasses import dataclass
 from datetime import date
 from logging import Logger
-from typing import Dict, Mapping
-
-from src.app.gateway.links import IGetLink
-from src.app.repo.links_repo import ILinksRepo
-from src.app.usecase.usecase import UseCase
-from src.domain.entity.Link import Link, LinkStatus
-from src.domain.service.weekdays import get_weekdays_from_range
+from typing import Dict, List, Mapping, Optional
+from rich.console import Console
 
 
-def process_links(new_links: list[str], existing_links: list[str]) -> list[str]:
+from ..gateway.links import IGetLink
+from ..repo.links_repo import ILinksRepo
+from ..usecase.usecase import UseCase
+from ...domain.entity.link import Link, LinkStatus, merge_links
+from ...domain.service.weekdays import get_weekdays_from_range
 
-    existing_links_set = {
-        link.link for link in existing_links if link.status == LinkStatus.FAILED
-    }
-    return [link for link in new_links if link not in existing_links_set]
-
+console = Console()
 
 @dataclass
 class LinkCollector(UseCase):
@@ -26,72 +21,34 @@ class LinkCollector(UseCase):
     logger: Logger
 
     async def execute(
-        self, entity_name: str, group: str, target_date: date, commit: bool
-    ) -> list[str]:
+        self,
+        entity_name: str,
+        group: str,
+        start: date,
+        end: Optional[date],
+        commit: Optional[bool],
+        status_filter: Optional[str],
+    ) -> Dict[date, list[Link]]:
 
-        try:
-            get_link = self.registry[f"{entity_name.upper()}:{group.upper()}"]
-            links_str = await get_link(target_date)
-            self.logger.info(
-                f"Collected {len(links_str)} links for {entity_name}:{group} on {target_date}"
-            )
-            if not commit:
-                return links_str
-        except KeyError:
-            self.logger.error(f"No link collector registered for {entity_name}:{group}")
-            raise ValueError(f"No link collector registered for {entity_name}:{group}")
+        if end is None:
+            end = start
 
-        links = [Link(link=link_str) for link_str in links_str]
+        weekdays = get_weekdays_from_range(start, end)
+        
+        if not weekdays:
+            self.logger.warning(f"No weekdays found in the range {start} to {end}.")
+            return []
 
-        existing_links = await self.links_repo.get_links(
-            entity_name, group, target_date
-        )
-
-        existing_urls = {elink.link for elink in existing_links}
-        existing_failed_urls = {
-            elink.link for elink in existing_links if elink.status == LinkStatus.FAILED
-        }
-
-        new_links: list[Link] = []
-
-        for link in links:
-            if link.link not in existing_urls or link.link in existing_failed_urls:
-                new_links.append(link)
-
-        if new_links:
-            await self.links_repo.save_links(entity_name, group, target_date, new_links)
-
-        self.logger.info(
-            f"Saved {len(new_links)} new links for {entity_name}:{group} on {target_date}"
-        )
-        return [link.link for link in new_links]
-
-
-@dataclass
-class LinkCollectorRange(UseCase):
-
-    link_collector: LinkCollector
-    logger: Logger
-
-    async def execute(
-        self, entity_name: str, group: str, start: date, end: date, commit: bool
-    ) -> Dict[date, list[str]]:
-        weekdays = get_weekdays_from_range(start=start, end=end)
-
-        results: Dict[date, list[str]] = {}
-
-        self.logger.info(
-            f"Starting range collection for {entity_name}:{group} from {start} to {end} ({len(weekdays)} weekdays)"
-        )
+        results: Dict[date, list[Link]] = {}
 
         # Use composed LinkCollector for each weekday in the range
         for weekday in weekdays:
             try:
-                links = await self.link_collector.execute(
+                links = await self._collect_single_day(
                     entity_name, group, weekday, commit
                 )
                 results[weekday] = links
-
+                console.print(f"Collected {len(links)} links for {entity_name}:{group} on {weekday}")
                 if links:
                     self.logger.debug(
                         f"Collected {len(links)} links for {entity_name}:{group} on {weekday}"
@@ -115,3 +72,55 @@ class LinkCollectorRange(UseCase):
         )
 
         return results
+
+    async def _collect_single_day(
+        self,
+        entity_name: str,
+        group: str,
+        target_date: date,
+        commit: Optional[bool] = None,
+    ) -> List[Link]:
+        try:
+            registry_key = f"{entity_name.upper()}:{group.upper()}"
+            
+            get_link = self.registry[registry_key]
+            
+            links_str = await get_link(target_date)
+            
+            self.logger.debug(f"Converting {len(links_str)} string links to Link objects")
+            links = []
+            for i, link_str in enumerate(links_str):
+                try:
+                    link_obj = Link(link=link_str)
+                    links.append(link_obj)
+                    if i < 3:  # Log only first few for debugging
+                        self.logger.debug(f"Created Link object: {link_obj}")
+                except Exception as e:
+                    self.logger.error(f"Failed to create Link from '{link_str}': {e}")
+                    raise
+            
+            if not commit:
+                return links
+        except KeyError:
+            self.logger.error(f"No link collector registered for {entity_name}:{group}")
+            raise ValueError(f"No link collector registered for {entity_name}:{group}")
+
+        existing_links = await self.links_repo.get_links(
+            entity_name, group, target_date
+        )
+
+        existing_urls = {elink.link for elink in existing_links}
+        existing_failed_urls = {
+            elink.link for elink in existing_links if elink.status == LinkStatus.FAILED
+        }
+
+        new_links: list[Link] = []
+
+        for link in links:
+            if link.link not in existing_urls or link.link in existing_failed_urls:
+                new_links.append(link)
+
+        if new_links:
+            await self.links_repo.save_links(entity_name, group, target_date, new_links)
+
+        return new_links

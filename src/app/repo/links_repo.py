@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Protocol
 
-from src.domain.entity.Link import Link
+from ...domain.entity.link import Link
 
 
 class ILinksRepo(Protocol):

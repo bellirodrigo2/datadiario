@@ -2,9 +2,9 @@ from datetime import date
 from typing import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.app.repo.links_repo import ILinksRepo
-from src.domain.entity.Link import Link, LinkStatus
-from src.infra.repo.links_repo.model import LinksDB, LinksEntryDB, LinkStatusDB
+from ....app.repo.links_repo import ILinksRepo
+from ....domain.entity.link import Link, LinkStatus
+from ...repo.links_repo.model import LinksDB, LinksEntryDB, LinkStatusDB
 
 
 class LinksRepo(ILinksRepo):

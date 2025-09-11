@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/RBELLI/Desktop/**)",
+      "Bash(fastmcp run:*)",
+      "Bash(python -m fastmcp:*)",
+      "WebSearch",
+      "WebFetch(domain:gofastmcp.com)",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

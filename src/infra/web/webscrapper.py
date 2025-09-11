@@ -3,6 +3,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -35,9 +36,11 @@ def get_headless_driver():
         "--disable-gpu"
     )  # Desabilita a GPU (necessário em alguns sistemas)
     chrome_options.add_argument("--no-sandbox")  # Necessário em alguns sistemas
-    
+
     # Suppress Chrome logs
-    chrome_options.add_argument("--log-level=3")  # Suppress INFO, WARNING, and ERROR logs
+    chrome_options.add_argument(
+        "--log-level=3"
+    )  # Suppress INFO, WARNING, and ERROR logs
     chrome_options.add_argument("--disable-logging")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-extensions")
@@ -47,13 +50,22 @@ def get_headless_driver():
     chrome_options.add_argument("--disable-features=TranslateUI")
     chrome_options.add_argument("--disable-ipc-flooding-protection")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-    
+    chrome_options.add_experimental_option("useAutomationExtension", False)
+    # chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+
     # Suppress Selenium logs
     import logging
-    logging.getLogger('selenium').setLevel(logging.WARNING)
-    
-    driver = webdriver.Chrome(chrome_options)
+
+    # logging.getLogger("selenium").setLevel(logging.WARNING)
+    logging.getLogger("selenium.webdriver.remote.remote_connection").setLevel(
+        logging.ERROR
+    )
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+
+    # driver = webdriver.Chrome(chrome_options)
+    service = Service(log_path="NUL")  # No Windows (ou '/dev/null' no Linux/Mac)
+
+    driver = webdriver.Chrome(service=service, options=chrome_options)
 
     return driver
 

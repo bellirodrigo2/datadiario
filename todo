@@ -1,12 +1,6 @@
-corrigir mains...
-main de mcp deve pegar host e port de environ
-usar bibliotexa hollidays de python e comparar com get_weekdays
-adicionar logica para noretry de erro em getlinks de ponte de feriado quinta ou segunda
+testes de integração
+acertar logs e click.echo nos usecases
 
+usar bibliotexa hollidays de python e comparar com get_weekdays
 dbs on dou
-read links para usecase
 usar rich
-usar typer ou click
-fazer logica de processamento de linksnetry, onde cada linksnetry é checado numero de links
-get_links mudar nome para ingest links
-fazer usecase insert links month
