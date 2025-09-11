@@ -5,6 +5,8 @@ import os
 from typing import Any, Callable, ClassVar, Dict, Optional
 
 from dotenv import load_dotenv
+
+from .app.usecase.retry import LinkRetry
 from .app.usecase.getlinks import LinkCollector
 from .app.usecase.readlinks import LinkReader
 from .app.usecase.usecase import UseCase
@@ -58,6 +60,7 @@ async def get_session_factory() -> Callable[..., Any]:
 class Container:
     link_reader: LinkReader
     link_collector: LinkCollector
+    link_retry: LinkRetry
     _session_factory: ClassVar[Optional[Callable[[], Any]]] = None
 
     @classmethod
@@ -75,51 +78,28 @@ class Container:
             registry=registry, links_repo=links_repo, logger=logger
         )
         link_reader = LinkReader(links_repo=links_repo, logger=logger)
+        
+        link_retry = LinkRetry(collect=link_collector, read=link_reader)
 
-        return cls(link_reader=link_reader, link_collector=link_collector)
+        return cls(link_reader=link_reader, link_collector=link_collector, link_retry=link_retry)
 
 async def get_use_case(command: str) -> UseCase:
     container = await Container.create()
-    return container.link_collector if command.upper() == "INSERT" else container.link_reader
+    commands_map = {
+        "INSERT": container.link_collector,
+        "RETRY": container.link_retry,
+        "READ": container.link_reader,
+    }
+    usecase= commands_map.get(command.upper())
+    if not usecase:
+        raise ValueError(f"Invalid command '{command}'. Supported commands: {list(commands_map.keys())}")
+    return usecase
 
 
-def parse_date(date_str: str) -> date:
-    """Parse date string in multiple formats using dateutil as primary method"""
-    # First try dateutil parser - it's very flexible and handles most formats
-    try:
-        parsed_dt = date_parser.parse(
-            date_str, dayfirst=True
-        )  # Assume DD/MM/YYYY format by default
-        return parsed_dt.date()
-    except (ValueError, TypeError):
-        pass
-
-    # Fallback to manual format parsing
-    formats = [
-        "%Y-%m-%d",  # 2022-12-25
-        "%d/%m/%Y",  # 25/12/2022
-        "%m/%d/%Y",  # 12/25/2022
-        "%d-%m-%Y",  # 25-12-2022
-        "%Y%m%d",  # 20221225
-    ]
-
-    for fmt in formats:
-        try:
-            return datetime.strptime(date_str, fmt).date()
-        except ValueError:
-            continue
-
-    # Final fallback to ISO format
-    try:
-        return date.fromisoformat(date_str)
-    except ValueError:
-        raise ValueError(
-            f"Unable to parse date '{date_str}'. Supported formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, DD-MM-YYYY, YYYYMMDD, and most common date formats"
-        )
 
 #---------------------------Request Response Models---------------------------
 import datetime
-from typing import List, Optional, Any
+from typing import  Optional, Any
 from pydantic import BaseModel, model_validator
 from datetime import date
 from dateutil import parser as date_parser
