@@ -37,7 +37,7 @@ class LinkRetry(UseCase):
             commit=None,
             status_filter=None
         )
-        empty_days = [day for day, links in links.items() if not links]
+        empty_days = [day for day, links in links.items() if len(links)==0]
         results = {}
         for day in empty_days:
             links = await self.collect.execute(

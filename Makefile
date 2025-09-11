@@ -1,16 +1,5 @@
-.PHONY: install dev test lint flake8 format clean 
+.PHONY:  test lint flake8 format clean 
 
-install:
-	@echo "Instaling dependencies..."
-	fastmcp install ./src/mcp.py
-
-dev:
-	@echo "Instaling dev dependencies..."
-	fastmcp dev ./src/mcp.py
-
-inspector:
-	@echo "inspect mcp server..."
-	npx @modelcontextprotocol/inspector ./mcp_config.json
 
 test:
 	@echo "Running tests..."

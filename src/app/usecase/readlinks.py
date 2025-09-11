@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from datetime import date
 from logging import Logger
 from typing import Dict, List, Optional
+from rich.console import Console
 
 from ..repo.links_repo import ILinksRepo
 from .usecase import UseCase
 from ...domain.entity.link import Link, LinkStatus
 from ...domain.service.weekdays import get_weekdays_from_range
 
+console = Console()
 
 @dataclass
 class LinkReader(UseCase):
@@ -68,14 +70,7 @@ class LinkReader(UseCase):
                 filtered_links = [
                     link for link in links if link.status == status_filter_enum
                 ]
-                self.logger.info(
-                    f"Retrieved {len(filtered_links)} {status_filter_enum.value} links for {entity_name}:{group} on {target_date}"
-                )
                 return filtered_links
-            else:
-                self.logger.info(
-                    f"Retrieved {len(links)} links for {entity_name}:{group} on {target_date}"
-                )
             return links
 
         except Exception as e:

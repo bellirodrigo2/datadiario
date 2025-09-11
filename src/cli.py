@@ -52,6 +52,8 @@ def links(
     if start_date and not end_date:
         end_date = start_date
 
+    command = command.upper()
+
     usecase = asyncio.run(get_use_case(command))
     # logger = usecase.logger
     
@@ -79,7 +81,8 @@ def links(
             commit=req.commit,
         )
     )
-    console.print(f"[blue]Found {len(results) if results else 0} links.[/blue]")    
+    res_str = {str(date_key): len(links) for date_key, links in results.items()}
+    console.print(res_str)
     if req.output:
         with open(output, "w", encoding="utf-8") as f:
             if isinstance(results, dict):
