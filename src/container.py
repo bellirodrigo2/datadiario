@@ -1,31 +1,41 @@
-from dataclasses import dataclass
-from datetime import date, datetime
 import logging
 import os
-from typing import Any, Callable, ClassVar, Dict, Optional
+from datetime import date, datetime
+from typing import Any, Callable, Dict, Optional
 
+from dateutil import parser as date_parser
 from dotenv import load_dotenv
 
-from .app.usecase.retry import LinkRetry
+from .app.usecase.getcontent import ContentCollector
 from .app.usecase.getlinks import LinkCollector
 from .app.usecase.readlinks import LinkReader
+from .app.usecase.retry import LinkRetry
 from .app.usecase.usecase import UseCase
+from .infra.gateway.contentgateway.br import parse_br_content
 from .infra.gateway.linksgateway.br import (
     get_br_dou1_links,
     get_br_dou2_links,
     get_br_dou3_links,
 )
-from .infra.repo.links_repo.model import Base
-from .infra.repo.links_repo.repo import LinksRepo
+from .infra.repo.base import Base
 from .infra.repo.links_repo.db import make_session
+from .infra.repo.links_repo.repo import LinksRepo
+from .infra.web.httpreq import AsyncHttpx
 
-from dateutil import parser as date_parser
 
 def create_getlink_registry() -> dict[str, Callable[..., Any]]:
     return {
         "BR:DOU1": get_br_dou1_links,
         "BR:DOU2": get_br_dou2_links,
         "BR:DOU3": get_br_dou3_links,
+    }
+
+
+def create_getcontent_registry() -> dict[str, Callable[..., Any]]:
+    return {
+        "BR:DOU1": parse_br_content,
+        "BR:DOU2": parse_br_content,
+        "BR:DOU3": parse_br_content,
     }
 
 
@@ -56,12 +66,12 @@ async def get_session_factory() -> Callable[..., Any]:
     db_url = get_database_url()
     return await make_session(db_url, Base)
 
-@dataclass
+
 class Container:
-    link_reader: LinkReader
-    link_collector: LinkCollector
-    link_retry: LinkRetry
-    _session_factory: ClassVar[Optional[Callable[[], Any]]] = None
+    _session_factory: Optional[Callable[[], Any]] = None
+
+    def __init__(self, usecases: dict[str, UseCase]):
+        self.usecases = usecases
 
     @classmethod
     async def create(cls) -> "Container":
@@ -70,40 +80,55 @@ class Container:
         if cls._session_factory is None:
             cls._session_factory = await get_session_factory()
 
-        registry = create_getlink_registry()
-        
-        links_repo = LinksRepo(cls._session_factory)
-        
+        links_registry = create_getlink_registry()
+        content_registry = create_getcontent_registry()
+
+        links_repo = LinksRepo(session_factory=cls._session_factory)
+
         link_collector = LinkCollector(
-            registry=registry, links_repo=links_repo, logger=logger
+            registry=links_registry, links_repo=links_repo, logger=logger
         )
         link_reader = LinkReader(links_repo=links_repo, logger=logger)
-        
+
         link_retry = LinkRetry(collect=link_collector, read=link_reader)
 
-        return cls(link_reader=link_reader, link_collector=link_collector, link_retry=link_retry)
+        content_collector = ContentCollector(
+            parsers=content_registry,
+            http_client=AsyncHttpx(),
+            links_repo=links_repo,
+            content_repo=None,  # To be implemented
+            logger=logger,
+            n_batch=10,
+        )
+
+        usecases: dict[str, UseCase] = {
+            "LINKS:INSERT": link_collector,
+            "LINKS:RETRY": link_retry,
+            "LINKS:READ": link_reader,
+            "CONTENT:INSERT": content_collector,
+        }
+
+        return cls(usecases=usecases)
+
 
 async def get_use_case(command: str) -> UseCase:
     container = await Container.create()
-    commands_map = {
-        "INSERT": container.link_collector,
-        "RETRY": container.link_retry,
-        "READ": container.link_reader,
-    }
-    usecase= commands_map.get(command.upper())
-    if not usecase:
-        raise ValueError(f"Invalid command '{command}'. Supported commands: {list(commands_map.keys())}")
-    return usecase
+    try:
+        return container.usecases[command.upper()]
+    except KeyError:
+        raise ValueError(
+            f"Invalid command '{command}'. Supported commands: {list(container.usecases.keys())}"
+        )
 
 
-
-#---------------------------Request Response Models---------------------------
+# ---------------------------Request Response Models---------------------------
 import datetime
-from typing import  Optional, Any
-from pydantic import BaseModel, model_validator
 from datetime import date
+from typing import Any, Optional
+
 from dateutil import parser as date_parser
-from .domain.entity.link import Link
+from pydantic import BaseModel, model_validator
+
 
 class LinkRequest(BaseModel):
     entity: str  # e.g., "br"
@@ -113,24 +138,26 @@ class LinkRequest(BaseModel):
     commit: bool = False
     status: Optional[str] = None  # e.g., "pending", "processed", "failed"
     output: Optional[str] = None  # e.g., file path for output
-    
-    @model_validator(mode='before')
+
+    @model_validator(mode="before")
     @classmethod
     def parse_dates(cls, values: Any) -> Any:
         if isinstance(values, dict):
             # Parse start_date if it's a string
-            if 'start_date' in values and isinstance(values['start_date'], str):
-                values['start_date'] = parse_date(values['start_date'])
-            
+            if "start_date" in values and isinstance(values["start_date"], str):
+                values["start_date"] = parse_date(values["start_date"])
+
             # Parse end_date if it's a string
-            if 'end_date' in values and isinstance(values['end_date'], str):
-                values['end_date'] = parse_date(values['end_date'])
-        
+            if "end_date" in values and isinstance(values["end_date"], str):
+                values["end_date"] = parse_date(values["end_date"])
+
         return values
-    
+
+
 class LinkResponse(BaseModel):
     request: LinkRequest
     links: Dict[date, Any]
+
 
 def parse_date(date_str: str) -> date:
     """Parse date string in multiple formats using dateutil as primary method"""
@@ -165,4 +192,3 @@ def parse_date(date_str: str) -> date:
         raise ValueError(
             f"Unable to parse date '{date_str}'. Supported formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, DD-MM-YYYY, YYYYMMDD, and most common date formats"
         )
-

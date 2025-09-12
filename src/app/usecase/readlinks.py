@@ -7,7 +7,6 @@ from rich.console import Console
 from ..repo.links_repo import ILinksRepo
 from .usecase import UseCase
 from ...domain.entity.link import Link, LinkStatus
-from ...domain.service.weekdays import get_weekdays_from_range
 
 console = Console()
 
@@ -27,10 +26,7 @@ class LinkReader(UseCase):
         status_filter: Optional[str],
     ) -> Dict[date, List[Link]]:
 
-        if end is None:
-            end = start
-    
-        weekdays = get_weekdays_from_range(start=start, end=end)
+        weekdays = self._get_weekdays(start=start, end=end)
 
         results: Dict[date, List[Link]] = {}
 
@@ -38,7 +34,7 @@ class LinkReader(UseCase):
 
         for weekday in weekdays:
             try:
-                links = await self._read_single_day(
+                links = await self.read_single_day(
                     entity_name, group, weekday, status_filter_enum
                 )
                 results[weekday] = links
@@ -55,7 +51,7 @@ class LinkReader(UseCase):
 
         return results
 
-    async def _read_single_day(
+    async def read_single_day(
         self,
         entity_name: str,
         group: str,

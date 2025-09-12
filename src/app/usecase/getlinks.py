@@ -8,8 +8,7 @@ from rich.console import Console
 from ..gateway.links import IGetLink
 from ..repo.links_repo import ILinksRepo
 from ..usecase.usecase import UseCase
-from ...domain.entity.link import Link, LinkStatus, merge_links
-from ...domain.service.weekdays import get_weekdays_from_range
+from ...domain.entity.link import Link, LinkStatus
 
 console = Console()
 
@@ -30,21 +29,14 @@ class LinkCollector(UseCase):
         status_filter: Optional[str],
     ) -> Dict[date, list[Link]]:
 
-        if end is None:
-            end = start
-
-        weekdays = get_weekdays_from_range(start, end)
-        
-        if not weekdays:
-            self.logger.warning(f"No weekdays found in the range {start} to {end}.")
-            return []
+        weekdays = self._get_weekdays(start=start, end=end)
 
         results: Dict[date, list[Link]] = {}
 
         # Use composed LinkCollector for each weekday in the range
         for weekday in weekdays:
             try:
-                links = await self._collect_single_day(
+                links = await self.collect_single_day(
                     entity_name, group, weekday, commit
                 )
                 results[weekday] = links
@@ -73,7 +65,7 @@ class LinkCollector(UseCase):
 
         return results
 
-    async def _collect_single_day(
+    async def collect_single_day(
         self,
         entity_name: str,
         group: str,

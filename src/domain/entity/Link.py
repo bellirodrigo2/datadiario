@@ -1,6 +1,6 @@
+from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
@@ -22,7 +22,9 @@ def init_not_allowed():
 
     return notallowed
 
+
 NOT_ALLOWED = init_not_allowed()
+
 
 def check_not_allowed(link: str) -> None:
 
@@ -35,8 +37,8 @@ class Link(BaseModel):
     link: str
     status: LinkStatus = Field(default=LinkStatus.PENDING)
 
-    @model_validator(mode='after')
-    def validate_link(self) -> 'Link':
+    @model_validator(mode="after")
+    def validate_link(self) -> "Link":
         try:
             HttpUrl(url=self.link)
             check_not_allowed(self.link)
@@ -52,13 +54,13 @@ class Link(BaseModel):
             raise ValueError("Cannot process a failed link")
         raise ValueError("Link already processed")
 
-def merge_links(existing_links: list[Link], new_links: list[Link]) -> list[Link]:
-    existing_links_dict = {link.link: link for link in existing_links}
-    for new_link in new_links:
-        if new_link.link in existing_links_dict:
-            existing_link = existing_links_dict[new_link.link]
-            if existing_link.status == LinkStatus.FAILED and new_link.status != LinkStatus.FAILED:
-                existing_links_dict[new_link.link] = new_link
-        else:
-            existing_links_dict[new_link.link] = new_link
-    return list(existing_links_dict.values())
+
+class LinksEntry(BaseModel):
+    entity: str
+    group: str
+    date: date
+    links: list[Link]
+
+    @property
+    def links_str(self) -> list[str]:
+        return [link.link for link in self.links]

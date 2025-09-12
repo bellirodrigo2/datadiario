@@ -6,11 +6,9 @@ from typing import Dict, Optional
 from .getlinks import LinkCollector
 from .readlinks import LinkReader
 
-from ..gateway.links import IGetLink
-from ..repo.links_repo import ILinksRepo
 from ..usecase.usecase import UseCase
-from ...domain.entity.link import Link, merge_links
-from ...domain.service.weekdays import get_weekdays_from_range
+from ...domain.entity.link import Link
+from ...domain.service.weekdays import  is_weekday
 
 
 @dataclass
@@ -39,14 +37,13 @@ class LinkRetry(UseCase):
         )
         empty_days = [day for day, links in links.items() if len(links)==0]
         results = {}
-        for day in empty_days:
-            links = await self.collect.execute(
+        weekday_empty = [day for day in empty_days if is_weekday(day)]
+        for day in weekday_empty:
+            links = await self.collect.collect_single_day(
                 entity_name=entity_name,
                 group=group,
-                start=start,
-                end=None,
-                commit=None,
-                status_filter=None
+                target_date=day,
+                commit=commit,
             )
             if links:
                 results[day] = links[day]

@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from dateutil import easter
+import holidays
 
 feriados = [(1, 1), (21, 4), (1, 5), (7, 9), (12, 10), (2, 11), (15, 11), (25, 12)]
 
@@ -78,6 +79,20 @@ def get_weekdays_from_range(start: date, end: date):
 
     return weekdays
 
+def get_weekdays_lib(start: date, end: date):
+    holidays = set(holidays.Brazil(years=range(start.year, end.year+1)))
+    
+    weekdays = get_weekdays_from_range(start, end)
+    
+    return [day for day in weekdays if day not in holidays]
+
+def is_weekday(d: date):
+    weekdays = get_weekdays_from_range(d, d)
+    return d in weekdays
+
+def is_holliday_bridge(d: date):
+    #checar se é ponte
+    ...
 
 if __name__ == "__main__":
 
