@@ -20,6 +20,8 @@ dependencies = [
     "selenium",
     "dotenv",
     "holidays>=0.35.0",
+    "elasticsearch>=8.0.0",
+    "elasticsearch-dsl>=8.0.0",
 ]
 
 [project.optional-dependencies]

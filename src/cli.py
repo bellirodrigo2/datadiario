@@ -60,9 +60,7 @@ def run(
     if start_date and not end_date:
         end_date = start_date
 
-    command = f"{operation.upper()}:{command.upper()}"
-
-    usecase = asyncio.run(get_use_case(command))
+    usecase = asyncio.run(get_use_case(operation, command))
     # logger = usecase.logger
 
     if verbose:

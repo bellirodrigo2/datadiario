@@ -6,10 +6,10 @@ from typing import Any, Callable, Dict, Optional
 from dateutil import parser as date_parser
 from dotenv import load_dotenv
 
-from .app.usecase.getcontent import ContentCollector
-from .app.usecase.getlinks import LinkCollector
+from .app.usecase.insertcontent import ContentCollector
+from .app.usecase.insertlinks import LinkCollector
 from .app.usecase.readlinks import LinkReader
-from .app.usecase.retry import LinkRetry
+from .app.usecase.retrylinks import LinkRetry
 from .app.usecase.usecase import UseCase
 from .infra.gateway.contentgateway.br import parse_br_content
 from .infra.gateway.linksgateway.br import (
@@ -111,10 +111,11 @@ class Container:
         return cls(usecases=usecases)
 
 
-async def get_use_case(command: str) -> UseCase:
+async def get_use_case(operation: str, command: str) -> UseCase:
     container = await Container.create()
+    key = f"{operation.upper()}:{command.upper()}"
     try:
-        return container.usecases[command.upper()]
+        return container.usecases[key]
     except KeyError:
         raise ValueError(
             f"Invalid command '{command}'. Supported commands: {list(container.usecases.keys())}"

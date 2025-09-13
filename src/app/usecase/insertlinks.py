@@ -2,15 +2,16 @@ from dataclasses import dataclass
 from datetime import date
 from logging import Logger
 from typing import Dict, List, Mapping, Optional
+
 from rich.console import Console
 
-
+from ...domain.entity.link import Link, LinkStatus
 from ..gateway.links import IGetLink
 from ..repo.links_repo import ILinksRepo
-from ..usecase.usecase import UseCase
-from ...domain.entity.link import Link, LinkStatus
+from .usecase import UseCase
 
 console = Console()
+
 
 @dataclass
 class LinkCollector(UseCase):
@@ -40,7 +41,9 @@ class LinkCollector(UseCase):
                     entity_name, group, weekday, commit
                 )
                 results[weekday] = links
-                console.print(f"Collected {len(links)} links for {entity_name}:{group} on {weekday}")
+                console.print(
+                    f"Collected {len(links)} links for {entity_name}:{group} on {weekday}"
+                )
                 if links:
                     self.logger.debug(
                         f"Collected {len(links)} links for {entity_name}:{group} on {weekday}"
@@ -74,12 +77,14 @@ class LinkCollector(UseCase):
     ) -> List[Link]:
         try:
             registry_key = f"{entity_name.upper()}:{group.upper()}"
-            
+
             get_link = self.registry[registry_key]
-            
+
             links_str = await get_link(target_date)
-            
-            self.logger.debug(f"Converting {len(links_str)} string links to Link objects")
+
+            self.logger.debug(
+                f"Converting {len(links_str)} string links to Link objects"
+            )
             links = []
             for i, link_str in enumerate(links_str):
                 try:
@@ -90,7 +95,7 @@ class LinkCollector(UseCase):
                 except Exception as e:
                     self.logger.error(f"Failed to create Link from '{link_str}': {e}")
                     raise
-            
+
             if not commit:
                 return links
         except KeyError:

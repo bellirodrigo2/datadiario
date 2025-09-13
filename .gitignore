@@ -5,6 +5,8 @@
 todo
 .claude
 
+prompt
+
 # Python
 __pycache__/
 *.py[cod]
