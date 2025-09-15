@@ -102,9 +102,7 @@ class LinkCollector(UseCase):
             self.logger.error(f"No link collector registered for {entity_name}:{group}")
             raise ValueError(f"No link collector registered for {entity_name}:{group}")
 
-        existing_links = await self.links_repo.get_links(
-            entity_name, group, target_date
-        )
+        existing_links = self.links_repo.get_links(entity_name, group, target_date)
 
         existing_urls = {elink.link for elink in existing_links}
         existing_failed_urls = {
@@ -118,6 +116,6 @@ class LinkCollector(UseCase):
                 new_links.append(link)
 
         if new_links:
-            await self.links_repo.save_links(entity_name, group, target_date, new_links)
+            self.links_repo.save_links(entity_name, group, target_date, new_links)
 
         return new_links

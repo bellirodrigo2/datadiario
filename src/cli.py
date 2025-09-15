@@ -60,7 +60,7 @@ def run(
     if start_date and not end_date:
         end_date = start_date
 
-    usecase = asyncio.run(get_use_case(operation, command))
+    usecase = get_use_case(operation, command)
     # logger = usecase.logger
 
     if verbose:
@@ -77,7 +77,7 @@ def run(
         output=output,
     )
     console.print(
-        f"[green]'{command.upper()}' for entity '{entity}' and group '{group}' from {start_date} to {end_date}[/green]"
+        f"[green]'{command.upper()} {operation.upper()}' for entity '{entity}' and group '{group}' from {start_date} to {end_date}[/green]"
     )
     results: dict[Any, Any] = asyncio.run(
         usecase.execute(
@@ -89,8 +89,14 @@ def run(
             commit=req.commit,
         )
     )
-    res_str = {str(date_key): len(links) for date_key, links in results.items()}
-    console.print(res_str)
+    if operation.upper() == "CONTENT":
+        for d, res in results.items():
+            console.print(
+                f"{d}: {len(res['docs'])} documents, {len(res['http_failed'])} http failed, {len(res['parser_failed'])} parser failed"
+            )
+    elif operation.upper() == "LINKS":
+        res_str = {str(date_key): len(links) for date_key, links in results.items()}
+        console.print(res_str)
     if req.output:
         with open(req.output, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=4)

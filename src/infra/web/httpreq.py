@@ -1,6 +1,6 @@
 import asyncio
+import logging
 from dataclasses import dataclass
-from logging import getLogger
 from typing import Any, Optional
 
 import httpx
@@ -12,7 +12,8 @@ def sublist(lista: list[Any], n: int):
     return [lista[i : i + n] for i in range(0, len(lista), n)]
 
 
-logger = getLogger(__name__)
+logger = logging.getLogger("httpx")
+logger.setLevel(logging.CRITICAL)
 
 
 @dataclass
@@ -37,6 +38,14 @@ class HttpxErrorResponse(IResponse):
     def url(self) -> str:
         return self._url
 
+    @property
+    def raw_url(self) -> str:
+        return self._url
+
+    @property
+    def is_success(self) -> bool:
+        return False
+
     def __repr__(self) -> str:
         return f"<HttpxErrorResponse url={self.url!r} status={self.status_code} error={self._error!r}>"
 
@@ -48,12 +57,12 @@ class AsyncHttpx(IHTTPRequest):
         return r
 
     async def get(self, url: str) -> IResponse:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             return await self._get(client, url)
 
     async def get_many(self, urls: list[str], n: int):  # type: ignore[override]
         lists = sublist(urls, n)
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             for li in lists:
                 tasks = [self._get(client, url) for url in li]
                 responses = await asyncio.gather(*tasks, return_exceptions=True)
@@ -62,5 +71,6 @@ class AsyncHttpx(IHTTPRequest):
                     if isinstance(r, BaseException):
                         batch.append(HttpxErrorResponse(_url=url, _error=r))
                     else:
+                        r.raw_url = url
                         batch.append(r)
                 yield batch

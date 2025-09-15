@@ -2,13 +2,15 @@ from dataclasses import dataclass
 from datetime import date
 from logging import Logger
 from typing import Dict, List, Optional
+
 from rich.console import Console
 
+from ...domain.entity.link import Link, LinkStatus
 from ..repo.links_repo import ILinksRepo
 from .usecase import UseCase
-from ...domain.entity.link import Link, LinkStatus
 
 console = Console()
+
 
 @dataclass
 class LinkReader(UseCase):
@@ -59,7 +61,7 @@ class LinkReader(UseCase):
         status_filter: Optional[LinkStatus] = None,
     ) -> List[Link]:
         try:
-            links = await self.links_repo.get_links(entity_name, group, target_date)
+            links = self.links_repo.get_links(entity_name, group, target_date)
             status_filter_enum = LinkStatus(status_filter) if status_filter else None
             if status_filter_enum:
                 # Filter by status if specified

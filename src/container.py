@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from dateutil import parser as date_parser
@@ -11,15 +12,16 @@ from .app.usecase.insertlinks import LinkCollector
 from .app.usecase.readlinks import LinkReader
 from .app.usecase.retrylinks import LinkRetry
 from .app.usecase.usecase import UseCase
+from .infra.db.sqlite_adapter import SQLiteAdapter
 from .infra.gateway.contentgateway.br import parse_br_content
 from .infra.gateway.linksgateway.br import (
     get_br_dou1_links,
     get_br_dou2_links,
     get_br_dou3_links,
 )
-from .infra.repo.base import Base
-from .infra.repo.links_repo.db import make_session
-from .infra.repo.links_repo.repo import LinksRepo
+from .infra.gateway.linksgateway.ce import get_ceara_links
+from .infra.repo.file_content_repo import FileContentRepoAdapter
+from .infra.repo.sql_repo import SQLLinksRepo
 from .infra.web.httpreq import AsyncHttpx
 
 
@@ -28,6 +30,7 @@ def create_getlink_registry() -> dict[str, Callable[..., Any]]:
         "BR:DOU1": get_br_dou1_links,
         "BR:DOU2": get_br_dou2_links,
         "BR:DOU3": get_br_dou3_links,
+        "CE:DOU": get_ceara_links,
     }
 
 
@@ -49,41 +52,60 @@ def get_logger():
     return logging.getLogger("dou")
 
 
-async def get_session_factory() -> Callable[..., Any]:
-    def get_database_url():
-        db_url = os.environ.get("DATABASE_URL")
-        if db_url:
-            return db_url
-
-        db_selector = os.environ.get("DB_SELECTOR", "DB_URL_MEMORY")
-        db_url = os.environ.get(db_selector)
-        if not db_url:
-            raise ValueError(
-                f"Database URL not found. Please set DATABASE_URL or a valid DB_SELECTOR. Tried '{db_selector}'"
-            )
+def get_database_url():
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
         return db_url
+    db_selector = os.environ.get("DB_SELECTOR", "DB_URL_MEMORY")
+    db_url = os.environ.get(db_selector)
+    if not db_url:
+        raise ValueError(
+            f"Database URL not found. Please set DATABASE_URL or a valid DB_SELECTOR. Tried '{db_selector}'"
+        )
+    return db_url
 
-    db_url = get_database_url()
-    return await make_session(db_url, Base)
+
+def get_create_tables_file() -> str:
+    create_file = os.environ.get("DB_CREATE_TABLES")
+    if not create_file:
+        print(os.environ)
+        raise ValueError(
+            f"Database create tables file not found. Please set DB_CREATE_TABLES to a valid file path. Tried '{create_file}'"
+        )
+
+    return create_file
+
+
+def get_n_batch() -> int:
+    n_batch_str = os.environ.get("N_BATCH", "3")
+    try:
+        n_batch = int(n_batch_str)
+        if n_batch <= 0:
+            raise ValueError
+        return n_batch
+    except ValueError:
+        raise ValueError(
+            f"Invalid N_BATCH value '{n_batch_str}'. It must be a positive integer."
+        )
 
 
 class Container:
-    _session_factory: Optional[Callable[[], Any]] = None
 
     def __init__(self, usecases: dict[str, UseCase]):
         self.usecases = usecases
 
     @classmethod
-    async def create(cls) -> "Container":
+    def create(cls) -> "Container":
         init()
         logger = get_logger()
-        if cls._session_factory is None:
-            cls._session_factory = await get_session_factory()
 
         links_registry = create_getlink_registry()
         content_registry = create_getcontent_registry()
 
-        links_repo = LinksRepo(session_factory=cls._session_factory)
+        db_url = get_database_url()
+        create_file = get_create_tables_file()
+        db_conn = SQLiteAdapter(db_url, create_file)
+        links_repo = SQLLinksRepo(db_conn)
 
         link_collector = LinkCollector(
             registry=links_registry, links_repo=links_repo, logger=logger
@@ -92,13 +114,15 @@ class Container:
 
         link_retry = LinkRetry(collect=link_collector, read=link_reader)
 
+        n_batch = get_n_batch()
+
         content_collector = ContentCollector(
             parsers=content_registry,
             http_client=AsyncHttpx(),
             links_repo=links_repo,
-            content_repo=None,  # To be implemented
+            content_repo=FileContentRepoAdapter(),  # To be implemented
             logger=logger,
-            n_batch=10,
+            n_batch=n_batch,
         )
 
         usecases: dict[str, UseCase] = {
@@ -111,8 +135,8 @@ class Container:
         return cls(usecases=usecases)
 
 
-async def get_use_case(operation: str, command: str) -> UseCase:
-    container = await Container.create()
+def get_use_case(operation: str, command: str) -> UseCase:
+    container = Container.create()
     key = f"{operation.upper()}:{command.upper()}"
     try:
         return container.usecases[key]

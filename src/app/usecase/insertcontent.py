@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import date
 from logging import Logger
-from re import L
 from typing import Any, Callable, Mapping, Optional, cast
 
 from rich.console import Console
@@ -19,14 +18,18 @@ def build_document(
     le: LinksEntry, link: str, content: dict[str, Any]
 ) -> dict[str, Any]:
     return {
-        "header": {
+        "metadata": {
             "entity": le.entity,
             "group": le.group,
-            "date": le.date,
+            "date": le.date.strftime("%d-%m-%Y"),
             "link": link,
         },
-        "body": content,
+        "doc": content,
     }
+
+
+class ParserError(Exception):
+    pass
 
 
 @dataclass
@@ -52,9 +55,7 @@ class ContentCollector(UseCase):
         if end is None:
             end = start
 
-        registry_key = f"{entity_name.upper()}:{group.upper()}"
-
-        pendings = await self.links_repo.get_pending_range(
+        pendings = self.links_repo.get_pending_range(
             entity_name=entity_name, group=group, start=start, end=end
         )
         return_dict = {}
@@ -72,14 +73,14 @@ class ContentCollector(UseCase):
                 )
                 # VER AQUI COMO RETORNAR OS ERROS DE INSERÇÃO
                 loop_ret["committed"] = len(docs)
-                await self.links_repo.mark_as_done(
+                self.links_repo.mark_as_done(
                     entity_name=linkentry.entity,
                     group=linkentry.group,
                     date=linkentry.date,
                     links=loop_ret["complete_links"],
                 )
                 # OQUE FAZER AQUI SE DER ERRO
-        return {}
+        return return_dict
 
     def _parse(
         self,
@@ -98,7 +99,7 @@ class ContentCollector(UseCase):
             return content
         except Exception as e:
             self.logger.error(f"Error parsing {str(resp.url)}: {e}")
-            return {"error": str(e)}
+            raise ParserError
 
     async def collect_single_day(
         self,
@@ -109,32 +110,39 @@ class ContentCollector(UseCase):
             "entity": linkentry.entity,
             "group": linkentry.group,
             "date": linkentry.date,
-            "processed": len(linkentry.links),
             "docs": [],
             "complete_links": [],
+            "http_failed": [],
             "parser_failed": [],
         }
-
+        i = 0
         async for responses_ in self.http_client.get_many(
             linkentry.links_str, self.n_batch
         ):
             responses = cast(list[IResponse], responses_)
+            loop_ret["http_ok"] = [r for r in responses if r.is_success]
 
-            loop_ret["http_ok"] = [r for r in responses if r.status_code in (200, 201)]
             ok_responses = loop_ret["http_ok"]
-            loop_ret["http_failed"] = [
-                str(r.url) for r in responses if r.status_code not in (200, 201)
-            ]
+            failed_responses = [r for r in responses if not r.is_success]
+            loop_ret["http_failed"].extend([str(r.url) for r in failed_responses])
 
             self.logger.debug(
-                f"Fetched {len(ok_responses)} OK and {len(loop_ret['http_failed'])} NOK for {linkentry.entity} {linkentry.group} {linkentry.date}"
+                f"{i}-Fetched {len(ok_responses)} OK and {len(failed_responses)} NOK for {linkentry.entity} {linkentry.group} {linkentry.date}"
             )
+            i += 1
 
             for resp in ok_responses:
-                doc = self._parse(linkentry.entity, linkentry.group, linkentry, resp)
-                if "error" in doc:
-                    loop_ret["parser_failed"].append(str(resp.url))
+                try:
+                    doc = self._parse(
+                        linkentry.entity, linkentry.group, linkentry, resp
+                    )
+                except ParserError:
+                    loop_ret["parser_failed"].append(str(resp.raw_url))
                     continue
+
                 loop_ret["docs"].append(doc)
-                loop_ret["complete_links"].append(str(resp.url))
+                loop_ret["complete_links"].append(str(resp.raw_url))
+
+                if str(resp.raw_url) not in linkentry.links_str:
+                    print(str(resp.raw_url))
         return loop_ret
